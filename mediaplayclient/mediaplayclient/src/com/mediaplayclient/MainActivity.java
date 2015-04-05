@@ -47,7 +47,8 @@ import android.widget.VideoView;
 
 public class MainActivity extends Activity {
 	private String serverUrl="http://123.57.39.141/test/android/GetServerData?";
-	private String rootUrl="http://123.57.39.141/test/content/files/";
+	private String rootUrl="http://123.57.39.141/test/content/files";
+	String downloadDir="/mnt/sdcard/medias/";
 	private VideoView myVideoView; // 声明一个变量和页面的元素对应起来			
 	private TextView mTime; // 显示时间的
 	private TextView tvSubtitle;//显示字幕
@@ -74,7 +75,7 @@ public class MainActivity extends Activity {
 	Context mContext;  
     DownloadManager manager ;  
     DownloadCompleteReceiver receiver;  
-	String downloadDir="/mnt/sdcard/medias/";
+	
 	private Handler handler = new Handler() {
 		@Override
 		// 当有消息发送出来的时候就执行Handler的这个方法
@@ -157,20 +158,19 @@ public class MainActivity extends Activity {
 			Log.i("download address", "ex2 get list");
 		}
 		
-		/*String test="{'resultPO':{'clist':null,'mlist':[{'description':'bbb','id':'2','isDelete':0,'mediaArea':null,'mediaGroup':null,'mediaName':'video2','mediaSize':null,'mediaType':null,'updateTime':'2015-03-18 08:15:44','url':'2.mp4'},{'description':'aaaa','id':'1','isDelete':0,'mediaArea':null,'mediaGroup':null,'mediaName':'video1','mediaSize':null,'mediaType':null,'updateTime':'2015-03-18 08:15:23','url':'1.mp4'},{'description':'bbb','id':'2','isDelete':0,'mediaArea':null,'mediaGroup':null,'mediaName':'video2','mediaSize':null,'mediaType':null,'updateTime':'2015-03-18 08:15:44','url':'2.mp4'}],'msg':null,'rs':'ok'}}";
 		try{
-		GetEqMediaData(test);
+			GetMyMediaList();
 		}
 		catch(Exception e)
 		{
 			
 		}
-		*/
+		
 				
 		//第三循环播放视频列表
 		lstMedia=GetLocalMedia();
 		try{
-		//downLoadMovies();
+		downLoadMovies();
 		}
 		catch(Exception ex)
 		{
@@ -406,7 +406,7 @@ public class MainActivity extends Activity {
 			File file = new File(videoPath);
 			if (!file.exists()) {
 			String urlDownload = "";
-			urlDownload = rootUrl+"/movie/"+lstMedia.get(i).MediaUrl;
+			urlDownload = rootUrl+"/"+lstMedia.get(i).MediaUrl;
 			
 			DownloadManager dm = (DownloadManager)getSystemService( DOWNLOAD_SERVICE);
     		DownloadManager.Request   down=new DownloadManager.Request (Uri.parse(urlDownload));
