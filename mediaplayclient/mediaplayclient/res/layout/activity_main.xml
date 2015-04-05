@@ -1,0 +1,49 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent" >
+
+    <VideoView
+        android:id="@+id/myVideoView"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent" />
+
+    <TextView
+        android:id="@+id/tvTime"
+        android:layout_width="120dp"
+        android:layout_height="50dp"
+        android:layout_gravity="right|top"
+        android:paddingRight="20px"
+        android:paddingTop="25dp"
+        android:text=""
+        android:textColor="#ffffff"
+        android:textSize="20dp" />
+
+    <TextView
+        android:id="@+id/tvSubtitle"
+        android:layout_width="500px"
+        android:layout_height="30dp"
+        android:layout_gravity="center_horizontal|bottom"
+        android:ellipsize="marquee"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:scrollHorizontally="true"
+        android:singleLine="true"
+        android:text=""
+        android:textColor="#ffffff"
+        android:textSize="20dp" 
+        android:paddingBottom="5px"
+        />
+
+    <ImageView
+        android:id="@+id/imgApkIcon"
+        android:layout_width="160dp"
+        android:layout_height="80dp"
+        android:layout_gravity="left|top"
+        android:focusableInTouchMode="true"
+        android:paddingLeft="30dp" 
+        android:paddingTop="30dp"
+        />
+
+</FrameLayout>
