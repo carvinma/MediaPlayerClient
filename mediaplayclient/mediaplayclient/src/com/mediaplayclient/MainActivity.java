@@ -47,7 +47,7 @@ import android.widget.VideoView;
 
 public class MainActivity extends Activity {
 	private String serverUrl="http://123.57.39.141/test/android/GetServerData?";
-	private String rootUrl="http://123.57.39.141/test/content/files";
+	private String rootUrl="http://123.57.39.141/test/android/DownloadMedia?";
 	String downloadDir="/mnt/sdcard/medias/";
 	private VideoView myVideoView; // 声明一个变量和页面的元素对应起来			
 	private TextView mTime; // 显示时间的
@@ -406,7 +406,7 @@ public class MainActivity extends Activity {
 			File file = new File(videoPath);
 			if (!file.exists()) {
 			String urlDownload = "";
-			urlDownload = rootUrl+"/"+lstMedia.get(i).MediaUrl;
+			urlDownload = rootUrl+"fileName="+lstMedia.get(i).MediaUrl;
 			
 			DownloadManager dm = (DownloadManager)getSystemService( DOWNLOAD_SERVICE);
     		DownloadManager.Request   down=new DownloadManager.Request (Uri.parse(urlDownload));
