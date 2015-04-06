@@ -39,10 +39,13 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.VideoView;
 
 public class MainActivity extends Activity {
@@ -443,5 +446,32 @@ public class MainActivity extends Activity {
         if(receiver != null)unregisterReceiver(receiver);  
         super.onDestroy();  
     }  
+    
+	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		switch (event.getAction()) {
+		case KeyEvent.ACTION_DOWN:
+			switch (event.getKeyCode()) {
+			case KeyEvent.KEYCODE_MENU:
+				if (event.getRepeatCount() == 0) {
+					Toast.makeText(MainActivity.this, "长按菜单键可以进入设置模式", Toast.LENGTH_SHORT).show();
+				} else {
+					Intent intent = new Intent(Settings.ACTION_SETTINGS);
+					startActivity(intent);
+				}
+				break;
+
+			default:
+				break;
+			}
+
+			break;
+
+		default:
+			break;
+		}
+
+		return super.dispatchKeyEvent(event);
+	}
 	
 }
