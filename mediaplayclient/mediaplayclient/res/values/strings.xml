@@ -4,5 +4,5 @@
     <string name="hello"></string>
     <string name="app_name">AUSU Media</string>
     <string name="title">得到的IP和端口号：</string>
-
+ 	<string name="tv_num">0%</string>  
 </resources>
