@@ -2,56 +2,73 @@ package com.mediaplayclient;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.DownloadManager;
+import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.PackageInfo;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.media.MediaPlayer;
-import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.Log;
+
+import android.view.View;
+
 import android.view.KeyEvent;
+
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
+
 
 public class MainActivity extends Activity {
 	private String serverUrl="http://123.57.39.141/test/android/GetServerData?";
 	private String rootUrl="http://123.57.39.141/test/android/DownloadMedia?";
 	String downloadDir="/mnt/sdcard/medias/";
+	
+	public static final String LOG_TAG = "test";  
+    
+    private ProgressDialog mProgressDialog;  
+    public static final int DIALOG_DOWNLOAD_PROGRESS = 0;    
+    File rootDir = Environment.getExternalStorageDirectory();  
+	
+    
+	
+	//播放器
 	private VideoView myVideoView; // 声明一个变量和页面的元素对应起来			
 	private TextView mTime; // 显示时间的
 	private TextView tvSubtitle;//显示字幕
@@ -60,24 +77,30 @@ public class MainActivity extends Activity {
 	private SQLiteDatabase db1;
 	private DBHelper dbhelper;
 
-	List<MediaInfo> lstMedia = new ArrayList<MediaInfo>();// 存放正在播放的影片信息
+	List<MediaInfo> lstServerMedia = new ArrayList<MediaInfo>();// 存放服务器端的影片信息
+	List<MediaInfo> lstPlayMedia = new ArrayList<MediaInfo>();// 存放可以播放的影片信息
+	List<MediaInfo> lstDownloadMedia = new ArrayList<MediaInfo>();// 存放需要下载的影片信息
 	private int mediaindex = 0;
 	
 	private int internalSendSn=10000;//10s
 	private int internalRequestMedia=100000;//100s
 	
+	//定义要下载的文件名  
+    public String fileName = "";  
+    public String fileURL = "";
+	public int downCount=0;
 	private static final int msgKey1 = 1;//获取本设备的时间信息
 	private static final int msgKey2 = 2;//获取服务器的时间信息
 	private static final int msgKey3 = 3;//程序启动后，首次发送json信息到服务器
 	private static final int msgKey4 = 4;//程序间隔100s，请求影片列表
 	private static final int msgKey5 = 5;//下载影片
 	
-	boolean IsMediaUpdate=false;
+	//boolean IsMediaUpdate=false;
 	
 	
 	Context mContext;  
-    DownloadManager manager ;  
-    DownloadCompleteReceiver receiver;  
+    //DownloadManager manager ;  
+    //DownloadCompleteReceiver receiver;  
 	
 	private Handler handler = new Handler() {
 		@Override
@@ -85,8 +108,7 @@ public class MainActivity extends Activity {
 		public void handleMessage(Message msg) {
 			super.handleMessage(msg);
 			switch (msg.what) {			
-			case msgKey1:
-				Log.i("mch", "get eq time");			
+			case msgKey1:			
 				long sysTime = System.currentTimeMillis();
 				CharSequence sysTimeStr = DateFormat.format("hh:mm:ss", sysTime);
 				mTime.setText(sysTimeStr);
@@ -96,20 +118,17 @@ public class MainActivity extends Activity {
 				Log.i("mch", "get server time");
 				break;
 			case msgKey3:
-				Log.i("mch", "send sn start");
 				SendEqInfo();		
-				Log.i("mch", "send sn end");
 				handler.sendEmptyMessageDelayed(msgKey3, internalSendSn);
 				break;
 			case msgKey4:
 				Log.i("mch", "Request media list");
-				GetMyMediaList();
-				if(IsMediaUpdate){
-					lstMedia=GetLocalMedia();
-					if(myVideoView.isPlaying())
-						myVideoView.stopPlayback();
-					PlayMovies();
-				}
+				GetServerMediaList();
+				GetLocalMedia();
+				downLoadMedias();
+				if(myVideoView.isPlaying())
+					myVideoView.stopPlayback();
+				PlayMedias();
 
 				//handler.sendEmptyMessageDelayed(msgKey4,internalRequestMedia); // 循环：每播完一个请求一次列表。
 				break;
@@ -137,8 +156,10 @@ public class MainActivity extends Activity {
 
 		myVideoView = (VideoView) findViewById(R.id.myVideoView);
 		tvSubtitle = (TextView) findViewById(R.id.tvSubtitle);
-		//tvSubtitle.setText("华硕电脑是全球消费型笔记本电脑全球第三大,主板全球第一的厂商.拥有世界级研发团队");
-		//tvSubtitle.requestFocus();
+		
+		//检查下载目录是否存在   
+        checkAndCreateDirectory("/mydownloads"); 
+		
 		
 		//程序启动后，发送sn到服务器
 		sn = android.provider.Settings.System.getString(
@@ -162,7 +183,7 @@ public class MainActivity extends Activity {
 		}
 		
 		try{
-			GetMyMediaList();
+			//GetMyMediaList();
 		}
 		catch(Exception e)
 		{
@@ -171,64 +192,65 @@ public class MainActivity extends Activity {
 		
 				
 		//第三循环播放视频列表
-		lstMedia=GetLocalMedia();
+		//lstMedia=GetLocalMedia();
 		try{
-		downLoadMovies();
+		//downLoadMovies();
 		}
 		catch(Exception ex)
 		{
 			Log.i("download address", "ex3 download list");
 		}
-		PlayMovies();
+		//PlayMovies();
         
 		// String s1=getLocalIpAddress();
 		// String s2 = getLocalMacAddress();
 	}
 
 	// 播放视频列表
-	public void PlayMovies() {
-		
-		if(lstMedia.size()>0)
+	public void PlayMedias() {		
+		if(lstPlayMedia.size()>0)
 		{
-		String videoPath=downloadDir+lstMedia.get(mediaindex).MediaUrl;
-		Log.i("download address", videoPath+"_"+mediaindex);
-		File file = new File(videoPath);
-		if (!file.exists()) {		
-			mediaindex=mediaindex+1;
+			String videoPath=downloadDir+lstPlayMedia.get(mediaindex).MediaUrl;
+			Log.i("download address", videoPath+"_"+mediaindex);
+			File file = new File(videoPath);
+			if (!file.exists() ||!file.renameTo(file) ||file.length()==0) {				
+				mediaindex=mediaindex+1;
 			return;
-		}
+			}
 		myVideoView.setVideoPath(file.getAbsolutePath());		
-		Log.i("download address", "ssss");
+		}
+		else
+		{
+			downLoadMedias();
 		}
 		myVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
 			@Override
 			public void onPrepared(MediaPlayer mp) {
-				mp.start();				
-				Log.i("download address", "start");
-				tvSubtitle.setText(lstMedia.get(mediaindex).Description);
+				setProgressBarVisibility(false);
+				mp.start();	
+				tvSubtitle.setText(lstPlayMedia.get(mediaindex).Description);
 				tvSubtitle.requestFocus();
 				mediaindex = mediaindex + 1;
 			}
 		});
 
-		myVideoView
-				.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+		myVideoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
 					@Override
 					public void onCompletion(MediaPlayer mp) {
 						handler.sendEmptyMessageAtTime(msgKey4, 1000);
-						if (lstMedia.size() > mediaindex) {					
-							String videoPath=downloadDir+lstMedia.get(mediaindex).MediaUrl;
+						if (lstPlayMedia.size() > mediaindex) {					
+							String videoPath=downloadDir+lstPlayMedia.get(mediaindex).MediaUrl;
 							Log.i("download address", videoPath);
 							File file = new File(videoPath);
-							if (!file.exists()) {
+							if (!file.exists() ||!file.renameTo(file)||file.length()==0) {
 								mediaindex=mediaindex+1;
 								return;
 							}
 							myVideoView.setVideoPath(file.getAbsolutePath());
 						} else {
 							mediaindex = 0;
-							File file = new File(downloadDir+lstMedia.get(mediaindex).MediaUrl);
-							if (!file.exists()) {
+							File file = new File(downloadDir+lstPlayMedia.get(mediaindex).MediaUrl);
+							if (!file.exists()||!file.renameTo(file)||file.length()==0) {
 								mediaindex=mediaindex+1;
 								return;
 							}
@@ -282,7 +304,7 @@ public class MainActivity extends Activity {
 	}
 
 	// 发送消息，查看media是否变化
-	public void GetMyMediaList() {
+	public void GetServerMediaList() {
 		HttpClient httpClient = new DefaultHttpClient(); 
         try { 
         String url=serverUrl+"sn="+sn+"&req=2";
@@ -310,27 +332,28 @@ public class MainActivity extends Activity {
 
 	// 接收返回的播放档案
 	private void GetEqMediaData(String json) throws JSONException {
-		
-		JSONObject jsonObject = new JSONObject(json);
-				
+		JSONObject jsonObject = new JSONObject(json);			
 		JSONArray jsonArray = new JSONArray(jsonObject.getString("Data"));// 里面有一个数组数据，可以用getJSONArray获取数组		
-		List<MediaInfo> lst=new ArrayList<MediaInfo>();
+		List<MediaInfo> lst=new ArrayList<MediaInfo>();		
 		for (int i = 0; i < jsonArray.length(); i++) {
 			JSONObject item = jsonArray.getJSONObject(i); // 得到每个对象
-			//int id = item.getInt("id"); // 获取对象对应的值
 			MediaInfo model=new MediaInfo();
 			model.MediaName =  item.getString("MediaName");
 			model.MediaUrl = item.getString("MediaUrl");
 			model.Description = item.getString("SubTitle");
 			 Log.i("mch json", model.MediaName);
 			lst.add(model);			
-		}		
-		if(lstMedia.size()==0)
-			lstMedia=GetLocalMedia();
-		if(IsMediaListUpdate(lstMedia,lst)){
-			SaveData(lst);
-			IsMediaUpdate=true;
 		}
+		if(lst.size()>0)
+		{
+			SaveData(lst);
+		}
+		//if(lstServerMedia.size()==0)
+		//	lstServerMedia=GetLocalMedia();
+		//if(IsMediaListUpdate(lstMedia,lst)){
+		//	SaveData(lst);
+		//	IsMediaUpdate=true;
+		//}
 		
 	}
 
@@ -356,28 +379,34 @@ public class MainActivity extends Activity {
 		}
 	}
 
-	// 从数据库里查询自己要播放的视频，进行播放
-	private List<MediaInfo> GetLocalMedia() {		
+	// 从数据库里查询自己能播放的视频，进行播放
+	private void GetLocalMedia() {		
 		List<MediaInfo> lst=new ArrayList<MediaInfo>();
 		dbhelper = new DBHelper(this, "dbmedia.db", null, 1);
 		db1 = this.openOrCreateDatabase("dbmedia.db", Context.MODE_PRIVATE,
 				null);
 		if (dbhelper.tabIsExist("tbmedia")) {				
 			Cursor c = db1.rawQuery("select * from tbmedia",null);// 查询并获得游标
-			while (c.moveToNext()) {
-				
+			while (c.moveToNext()) {				
 				MediaInfo model=new MediaInfo();
 				model.MediaName = c.getString(c.getColumnIndex("MediaName"));
 				model.MediaUrl = c.getString(c.getColumnIndex("MediaUrl"));
 				model.Description = c.getString(c.getColumnIndex("Description"));
-				lst.add(model);
+				String videoPath=downloadDir+model.MediaUrl;
+				File file = new File(videoPath);
+				if (file.exists() &&file.length()>0) {
+					lstPlayMedia.add(model);
+				}
+				else
+				{
+					lstDownloadMedia.add(model);
+				}
+				
 				Log.i("mch local data", model.MediaName);
 			}		
 			c.close();
 			db1.close();
 		}
-		return lst;
-
 	}
 
 	/* 通过新旧影片列表的对比，如果有变化，则返回true，否则false
@@ -401,25 +430,20 @@ public class MainActivity extends Activity {
 		return false;		
 	}
 	
-	private void downLoadMovies() {		
-		int count=lstMedia.size();
+	private void downLoadMedias() {		
+		int count=lstDownloadMedia.size();
 		for(int i=0;i<count;i++)
-		{
-			String videoPath=downloadDir+lstMedia.get(i).MediaUrl;
-			File file = new File(videoPath);
-			if (!file.exists()) {
-			String urlDownload = "";
-			urlDownload = rootUrl+"fileName="+lstMedia.get(i).MediaUrl;
-			
-			DownloadManager dm = (DownloadManager)getSystemService( DOWNLOAD_SERVICE);
-    		DownloadManager.Request   down=new DownloadManager.Request (Uri.parse(urlDownload));
-    		down.setVisibleInDownloadsUi(true);
-    		//down.setDestinationInExternalFilesDir(this, null, lstMedia.get(i).MediaUrl);
-    		down.setDestinationInExternalPublicDir("Medias",lstMedia.get(i).MediaUrl);
-    		//down.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-    		dm.enqueue(down);
-    		
-			}
+		{			
+			fileName=lstDownloadMedia.get(i).MediaUrl;
+			this.fileURL= rootUrl+"fileName="+fileName;
+			new DownloadFileAsync().execute(fileURL);  
+			//DownloadManager dm = (DownloadManager)getSystemService( DOWNLOAD_SERVICE);
+    		//DownloadManager.Request   down=new DownloadManager.Request (Uri.parse(urlDownload));
+    		//down.setVisibleInDownloadsUi(true);
+    		////down.setDestinationInExternalFilesDir(this, null, lstMedia.get(i).MediaUrl);
+    		//down.setDestinationInExternalPublicDir("Medias",lstMedia.get(i).MediaUrl);
+    		////down.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+    		//dm.enqueue(down);
 		}
 	}
 	
@@ -435,17 +459,138 @@ public class MainActivity extends Activity {
         }  
     }  
       
-    @Override  
-    protected void onResume() {  
-        registerReceiver(receiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));  
-        super.onResume();  
+    //@Override  
+    //protected void onResume() {  
+    //    registerReceiver(receiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));  
+    //    super.onResume();  
+    //}  
+      
+    //@Override  
+    //protected void onDestroy() {  
+    //    if(receiver != null)unregisterReceiver(receiver);  
+    //    super.onDestroy();  
+    //}  
+    
+   
+    class DownloadFileAsync extends AsyncTask<String, String, String> {  
+        
+        @Override  
+        protected void onPreExecute() {  
+            super.onPreExecute();  
+            showDialog(DIALOG_DOWNLOAD_PROGRESS);  
+        }  
+  
+          
+        @Override  
+        protected String doInBackground(String... aurl) {  
+  
+            try {  
+                //连接地址  
+                URL u = new URL(fileURL);  
+                HttpURLConnection c = (HttpURLConnection) u.openConnection();  
+                c.setRequestMethod("GET");  
+                c.setDoOutput(true);  
+                c.connect();  
+                  
+                //计算文件长度  
+                int lenghtOfFile = c.getContentLength();  
+                String filePath=rootDir + "/my_downloads/"+fileName;
+                File fi=new File(rootDir + "/my_downloads/", fileName);
+                if(fi.exists()&&fi.renameTo(fi) && fi.length()==0)
+                	return null;
+                FileOutputStream f = new FileOutputStream(fi);  
+            
+                InputStream in = c.getInputStream();  
+  
+               //下载的代码  
+                byte[] buffer = new byte[1024];  
+                int len1 = 0;  
+                long total = 0;  
+                  
+                while ((len1 = in.read(buffer)) > 0) {  
+                    //total += len1; //total = total + len1  
+                    //publishProgress("" + (int)((total*100)/lenghtOfFile));  
+                    f.write(buffer, 0, len1);  
+                }  
+                f.close();  
+                downCount++; 
+                publishProgress("" + (int)((downCount*100)/lstDownloadMedia.size())); 
+                
+               copyFile(filePath, downloadDir+"/"+fileName);
+                
+                
+                
+            } catch (Exception e) {  
+                Log.d(LOG_TAG, e.getMessage());  
+            }  
+              
+            return null;  
+        }  
+          
+        protected void onProgressUpdate(String... progress) {  
+             Log.d(LOG_TAG,progress[0]);  
+             mProgressDialog.setProgress(Integer.parseInt(progress[0]));  
+        }  
+  
+        @Override  
+        protected void onPostExecute(String unused) {  
+            //dismiss the dialog after the file was downloaded         	
+            dismissDialog(DIALOG_DOWNLOAD_PROGRESS);  
+        } 
+        
     }  
       
-    @Override  
-    protected void onDestroy() {  
-        if(receiver != null)unregisterReceiver(receiver);  
-        super.onDestroy();  
+    public void copyFile(String oldPath, String newPath) {   
+        try {   
+            int bytesum = 0;   
+            int byteread = 0;   
+            File oldfile = new File(oldPath);   
+            if (oldfile.exists()) { //文件存在时   
+                InputStream inStream = new FileInputStream(oldPath); //读入原文件   
+                FileOutputStream fs = new FileOutputStream(newPath);   
+                byte[] buffer = new byte[1444];   
+                int length;   
+                while ( (byteread = inStream.read(buffer)) != -1) {   
+                    bytesum += byteread; //字节数 文件大小   
+                    System.out.println(bytesum);   
+                    fs.write(buffer, 0, byteread);   
+                }   
+                inStream.close();   
+            }   
+        }   
+        catch (Exception e) {   
+            System.out.println("复制单个文件操作出错");   
+            e.printStackTrace();   
+   
+        }   
+   
+    }   
+      
+    public void checkAndCreateDirectory(String dirName){  
+        File new_dir = new File( rootDir + dirName );  
+        if( !new_dir.exists() ){  
+            new_dir.mkdirs();  
+        }  
     }  
+
+      
+        @Override  
+    protected Dialog onCreateDialog(int id) {  
+        switch (id) {  
+            case DIALOG_DOWNLOAD_PROGRESS: //we set this to 0  
+                mProgressDialog = new ProgressDialog(this);  
+                mProgressDialog.setMessage("Downloading file...");  
+                mProgressDialog.setIndeterminate(false);  
+                mProgressDialog.setMax(100);  
+                mProgressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);  
+                mProgressDialog.setCancelable(true);  
+                mProgressDialog.show();  
+                return mProgressDialog;  
+            default:  
+                return null;  
+        }  
+    }  
+
     
 	@Override
 	public boolean dispatchKeyEvent(KeyEvent event) {
@@ -473,5 +618,6 @@ public class MainActivity extends Activity {
 
 		return super.dispatchKeyEvent(event);
 	}
+
 	
 }
